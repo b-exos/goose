@@ -1,98 +1,76 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+/** Home tab — today's overview: device connection, live heart rate, daily scores, workout. */
+import { StyleSheet, View } from 'react-native';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
+import { MetricReadout, SectionCard } from '@/features/components/section-card';
+import { ScreenScaffold } from '@/features/components/screen-scaffold';
+import { UiButton } from '@/features/components/ui-button';
+import { useBleStore } from '@/state/ble-store';
+import { useWorkoutStore } from '@/state/workout-store';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
+const CONNECTION_LABEL: Record<string, string> = {
+  idle: 'Not connected',
+  scanning: 'Scanning…',
+  connecting: 'Connecting…',
+  connected: 'Connected',
+  disconnected: 'Disconnected',
+};
+
+function formatElapsed(seconds: number): string {
+  const m = `${Math.floor(seconds / 60)}`.padStart(2, '0');
+  const s = `${seconds % 60}`.padStart(2, '0');
+  return `${m}:${s}`;
 }
 
 export default function HomeScreen() {
+  const connectionState = useBleStore((s) => s.connectionState);
+  const liveHeartRate = useBleStore((s) => s.liveHeartRate);
+  const isRecording = useWorkoutStore((s) => s.isRecording);
+  const elapsedSeconds = useWorkoutStore((s) => s.elapsedSeconds);
+  const distanceMeters = useWorkoutStore((s) => s.distanceMeters);
+  const startWorkout = useWorkoutStore((s) => s.start);
+  const stopWorkout = useWorkoutStore((s) => s.stop);
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+    <ScreenScaffold title="Today">
+      <SectionCard title="Band" subtitle={CONNECTION_LABEL[connectionState] ?? connectionState}>
+        <MetricReadout
+          value={liveHeartRate != null ? `${liveHeartRate}` : '—'}
+          caption="Live heart rate (bpm)"
+        />
+        {connectionState !== 'connected' ? (
+          <ThemedText type="small">Connect your WHOOP 5.0 in the More tab to start syncing.</ThemedText>
+        ) : null}
+      </SectionCard>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+      <SectionCard
+        title="Workout"
+        subtitle={isRecording ? `${formatElapsed(elapsedSeconds)} · ${(distanceMeters / 1000).toFixed(2)} km` : 'Not recording'}>
+        <UiButton
+          label={isRecording ? 'End workout' : 'Record workout'}
+          variant={isRecording ? 'outlined' : 'filled'}
+          onPress={isRecording ? stopWorkout : () => startWorkout('Workout')}
+        />
+      </SectionCard>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+      <View style={styles.scoreRow}>
+        <SectionCard title="Recovery">
+          <MetricReadout value="—" caption="Today" />
+        </SectionCard>
+        <SectionCard title="Strain">
+          <MetricReadout value="—" caption="Today" />
+        </SectionCard>
+      </View>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+      <SectionCard title="Sleep" subtitle="Last night">
+        <MetricReadout value="—" caption="Sleep score" />
+        <ThemedText type="small">Scores populate once a sync completes.</ThemedText>
+      </SectionCard>
+    </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
+  scoreRow: { flexDirection: 'row', gap: Spacing.three },
 });

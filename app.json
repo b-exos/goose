@@ -9,17 +9,22 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.teamexos.goose",
+      "bundleIdentifier": "com.branaust.goose",
       "supportsTablet": false,
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSBluetoothAlwaysUsageDescription": "Goose connects to your WHOOP 5.0 band over Bluetooth to sync health data.",
         "NSLocationWhenInUseUsageDescription": "Goose uses your location to track route and distance during workouts.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Goose uses your location in the background to track workouts and overnight sessions.",
-        "UIBackgroundModes": ["bluetooth-central", "location", "processing"]
+        "UIBackgroundModes": [
+          "bluetooth-central",
+          "location",
+          "processing"
+        ]
       }
     },
     "android": {
-      "package": "com.teamexos.goose",
+      "package": "com.branaust.goose",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -34,7 +39,10 @@
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_HEALTH",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
@@ -57,7 +65,9 @@
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": true,
-          "modes": ["central"],
+          "modes": [
+            "central"
+          ],
           "bluetoothAlwaysPermission": "Goose connects to your WHOOP 5.0 band over Bluetooth to sync health data."
         }
       ],
@@ -68,11 +78,43 @@
         }
       ],
       "expo-notifications",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "com.branaust.goose.widgets",
+          "groupIdentifier": "group.com.branaust.goose",
+          "enablePushNotifications": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "ExpoWidgetsTarget",
+                  "bundleIdentifier": "com.branaust.goose.widgets",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.branaust.goose"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "ae39210c-83bc-4e46-b5f3-b04f61fbab0e"
+      }
+    },
+    "owner": "branaust"
   }
 }

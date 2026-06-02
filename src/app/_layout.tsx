@@ -3,13 +3,19 @@ import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
+import { Onboarding } from '@/features/onboarding/onboarding';
+import { useOnboardingStore } from '@/state/onboarding-store';
 
-export default function TabLayout() {
+export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const onboardingComplete = useOnboardingStore((s) => s.completed);
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
+      {/* The tab navigator stays mounted so routing remains valid; onboarding overlays it. */}
       <AppTabs />
+      {onboardingComplete ? null : <Onboarding />}
     </ThemeProvider>
   );
 }
