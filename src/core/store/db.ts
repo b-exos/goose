@@ -8,6 +8,7 @@
  * This replaces the Rust `GooseStore` connection (`docs/rust-reference/src/store.rs`).
  */
 import { OVERNIGHT_MIRROR_SQL, SCHEMA_SQL } from './schema';
+import { ROLLUP_SCHEMA_SQL } from './schema-rollups';
 
 /** Values that can be bound to a SQL statement. */
 export type SqlValue = string | number | null | Uint8Array;
@@ -33,6 +34,7 @@ export interface GooseDatabase {
 export async function migrate(db: GooseDatabase): Promise<void> {
   await db.execAsync(SCHEMA_SQL);
   await db.execAsync(OVERNIGHT_MIRROR_SQL);
+  await db.execAsync(ROLLUP_SCHEMA_SQL);
 }
 
 /** Read the SQLite `user_version` pragma (14 once migrated). */

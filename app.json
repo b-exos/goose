@@ -16,11 +16,7 @@
         "NSBluetoothAlwaysUsageDescription": "Goose connects to your WHOOP 5.0 band over Bluetooth to sync health data.",
         "NSLocationWhenInUseUsageDescription": "Goose uses your location to track route and distance during workouts.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Goose uses your location in the background to track workouts and overnight sessions.",
-        "UIBackgroundModes": [
-          "bluetooth-central",
-          "location",
-          "processing"
-        ]
+        "UIBackgroundModes": ["bluetooth-central", "location", "processing"]
       }
     },
     "android": {
@@ -65,9 +61,7 @@
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": true,
-          "modes": [
-            "central"
-          ],
+          "modes": ["central"],
           "bluetoothAlwaysPermission": "Goose connects to your WHOOP 5.0 band over Bluetooth to sync health data."
         }
       ],

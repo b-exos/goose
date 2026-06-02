@@ -183,3 +183,45 @@ export function listDecodedFramesForEvidence(
     [evidenceId],
   );
 }
+
+interface ExtractionFrameRow {
+  frame_id: string;
+  packet_type: number | null;
+  packet_type_name: string | null;
+  payload_hex: string;
+  parsed_payload_json: string;
+  created_at: string;
+}
+
+/**
+ * Decoded frames in a `created_at` window (ISO bounds; ISO sorts chronologically), shaped for
+ * the extraction pipeline. `capturedAtMs` is derived from `created_at`.
+ */
+export async function decodedFramesForExtraction(
+  db: GooseDatabase,
+  startIso: string,
+  endIso: string,
+): Promise<
+  {
+    frameId: string;
+    packetType: number | null;
+    packetTypeName: string | null;
+    payloadHex: string;
+    parsedPayloadJson: string;
+    capturedAtMs: number;
+  }[]
+> {
+  const rows = await db.getAllAsync<ExtractionFrameRow>(
+    `SELECT frame_id, packet_type, packet_type_name, payload_hex, parsed_payload_json, created_at
+       FROM decoded_frames WHERE created_at >= ? AND created_at < ? ORDER BY created_at ASC`,
+    [startIso, endIso],
+  );
+  return rows.map((r) => ({
+    frameId: r.frame_id,
+    packetType: r.packet_type,
+    packetTypeName: r.packet_type_name,
+    payloadHex: r.payload_hex,
+    parsedPayloadJson: r.parsed_payload_json,
+    capturedAtMs: Date.parse(r.created_at),
+  }));
+}

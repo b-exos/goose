@@ -1,5 +1,5 @@
 /** Tests for the BLE notification router: chunk buffering, deframing, and parsing. */
-import { decodeHexWithWhitespace } from '../core/protocol';
+import { buildV5PayloadFrame, decodeHexWithWhitespace, parseFrame } from '../core/protocol';
 import { loadHex } from '../core/testing/fixtures';
 import { liveHeartRateFromFrame, NotificationRouter } from './notifications';
 
@@ -33,5 +33,13 @@ describe('NotificationRouter', () => {
     const router = new NotificationRouter('GOOSE');
     const [frame] = router.ingest('data_from_strap', k10);
     expect(liveHeartRateFromFrame(frame.frame)).toBe(72);
+  });
+
+  it('extracts live heart rate from a REALTIME_DATA frame (byte 8)', () => {
+    // REALTIME_DATA (0x28), k=2, counter, …, present flag at [7]=1, bpm at [8]=57.
+    const payload = new Uint8Array([0x28, 0x02, 0xc8, 0x4d, 0x1f, 0x6a, 0x47, 0x01, 57, 0, 0, 0, 0]);
+    const frame = parseFrame('GOOSE', buildV5PayloadFrame(payload));
+    expect(frame.packetTypeName).toBe('REALTIME_DATA');
+    expect(liveHeartRateFromFrame(frame)).toBe(57);
   });
 });

@@ -10,9 +10,11 @@ import { UiButton } from '@/features/components/ui-button';
 import {
   connectToDevice,
   disconnect,
+  runHistoricalSync,
   sendGetHello,
   startScan,
   stopScan,
+  toggleRealtimeHr,
 } from '@/state/app-controller';
 import { useBleStore } from '@/state/ble-store';
 
@@ -20,6 +22,10 @@ export default function MoreScreen() {
   const connectionState = useBleStore((s) => s.connectionState);
   const devices = useBleStore((s) => s.discoveredDevices);
   const lastError = useBleStore((s) => s.lastError);
+  const recentFrames = useBleStore((s) => s.recentFrames);
+  const framesSeen = useBleStore((s) => s.framesSeen);
+  const syncStatus = useBleStore((s) => s.syncStatus);
+  const lastSyncSummary = useBleStore((s) => s.lastSyncSummary);
   const isConnected = connectionState === 'connected';
   const isScanning = connectionState === 'scanning';
 
@@ -31,7 +37,18 @@ export default function MoreScreen() {
       <SectionCard title="Device" subtitle={`Status: ${connectionState}`}>
         <UiButton label={primaryLabel} onPress={onPrimary} />
         {isConnected ? (
-          <UiButton label="Send GET_HELLO" variant="outlined" onPress={sendGetHello} />
+          <>
+            <UiButton label="Send GET_HELLO" variant="outlined" onPress={sendGetHello} />
+            <UiButton label="Start live HR" variant="outlined" onPress={() => toggleRealtimeHr(true)} />
+            <UiButton label="Stop live HR" variant="text" onPress={() => toggleRealtimeHr(false)} />
+            <UiButton
+              label={syncStatus === 'syncing' ? 'Syncing history…' : 'Sync history'}
+              onPress={runHistoricalSync}
+            />
+            {lastSyncSummary ? (
+              <ThemedText type="small">Last sync ({syncStatus}): {lastSyncSummary}</ThemedText>
+            ) : null}
+          </>
         ) : null}
         {devices.length === 0 ? (
           <ThemedText type="small">No bands found yet.</ThemedText>
@@ -51,6 +68,25 @@ export default function MoreScreen() {
         {lastError ? <ThemedText type="small">Error: {lastError}</ThemedText> : null}
       </SectionCard>
 
+      <SectionCard title="Debug · inbound frames" subtitle={`${framesSeen} frame(s) received`}>
+        {recentFrames.length === 0 ? (
+          <ThemedText type="small">
+            Parsed BLE frames will appear here. Connect, then tap Send GET_HELLO or Start live HR.
+          </ThemedText>
+        ) : (
+          recentFrames.map((f) => (
+            <ThemedView key={f.seq} type="backgroundSelected" style={styles.frameRow}>
+              <ThemedText type="smallBold">
+                #{f.seq} · {f.packetTypeName ?? `type ${f.packetType ?? '?'}`} · {f.payloadKind ?? '—'}
+              </ThemedText>
+              <ThemedText type="small">
+                {f.role} · {f.payloadHex || '(empty)'}
+              </ThemedText>
+            </ThemedView>
+          ))
+        )}
+      </SectionCard>
+
       <SectionCard title="Settings">
         <ThemedText type="small">Algorithm preferences and profile (coming next).</ThemedText>
       </SectionCard>
@@ -64,4 +100,5 @@ export default function MoreScreen() {
 
 const styles = StyleSheet.create({
   deviceRow: { gap: Spacing.half, padding: Spacing.two, borderRadius: Spacing.two },
+  frameRow: { gap: Spacing.half, padding: Spacing.two, borderRadius: Spacing.two },
 });

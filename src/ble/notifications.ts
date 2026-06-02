@@ -6,6 +6,7 @@
  * characteristic gets its own `FrameAccumulator`. Pure over byte input — no native deps —
  * so it is unit-testable with synthetic streams.
  */
+import { heartRateFromFrame } from '../core/features/heart-rate';
 import {
   FrameAccumulator,
   parseFrame,
@@ -51,11 +52,12 @@ export class NotificationRouter {
   }
 }
 
-/** Pull the most recent live heart rate from a parsed data-packet frame, if present. */
+/**
+ * Pull the most recent live heart rate from a parsed data-packet frame, if present.
+ *
+ * Matches the reference HR sources (`heart_rate_plan_from_row`): raw-motion K10 (the
+ * `heart_rate` byte) and normal-history packets (the HR-present marker value).
+ */
 export function liveHeartRateFromFrame(frame: ParsedFrame): number | null {
-  const body = frame.parsedPayload?.kind === 'data_packet' ? frame.parsedPayload.bodySummary : null;
-  if (body?.kind === 'raw_motion_k10' && body.heartRate != null && body.heartRate > 0) {
-    return body.heartRate;
-  }
-  return null;
+  return heartRateFromFrame(frame);
 }

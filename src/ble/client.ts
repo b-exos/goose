@@ -112,6 +112,8 @@ export class GooseBleClient {
         this.subscribeRole(device, role);
       }
       this.events.onStateChange?.('connected');
+      // Sync the band clock so historical timestamps are anchored to real time.
+      await this.sendSetClock(Math.floor(Date.now() / 1000)).catch(() => undefined);
     } catch (error) {
       this.events.onError?.(error instanceof Error ? error.message : String(error));
       this.events.onStateChange?.('disconnected');
@@ -150,6 +152,41 @@ export class GooseBleClient {
   /** Send the GET_HELLO handshake. */
   sendGetHello(): Promise<void> {
     return this.sendCommand(this.sequencer.getHello());
+  }
+
+  /** Start or stop realtime heart-rate streaming from the band. */
+  sendToggleRealtimeHr(enable: boolean): Promise<void> {
+    return this.sendCommand(this.sequencer.toggleRealtimeHr(enable));
+  }
+
+  /** Set the band RTC (seconds since epoch). */
+  sendSetClock(unixSeconds: number): Promise<void> {
+    return this.sendCommand(this.sequencer.setClock(unixSeconds));
+  }
+
+  /** Ask the band for its available historical data range. */
+  sendGetDataRange(): Promise<void> {
+    return this.sendCommand(this.sequencer.getDataRange());
+  }
+
+  /** Request the band stream buffered historical data. */
+  sendHistoricalData(): Promise<void> {
+    return this.sendCommand(this.sequencer.sendHistoricalData());
+  }
+
+  /** Acknowledge a completed historical transfer. */
+  sendHistoricalDataResult(success: boolean): Promise<void> {
+    return this.sendCommand(this.sequencer.historicalDataResult(success));
+  }
+
+  /** Abort any in-flight historical transmit. */
+  sendAbortHistorical(): Promise<void> {
+    return this.sendCommand(this.sequencer.abortHistoricalTransmits());
+  }
+
+  /** Request the current battery level. */
+  sendGetBatteryLevel(): Promise<void> {
+    return this.sendCommand(this.sequencer.getBatteryLevel());
   }
 
   async disconnect(): Promise<void> {
