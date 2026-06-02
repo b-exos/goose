@@ -41,8 +41,8 @@ docs/rust-reference/    frozen snapshot of the original Rust source/tests (port 
 ## Getting started
 
 ```bash
-npm install
-npm run ios       # or: npm run android
+bun install
+bun run ios       # or: bun run android
 ```
 
 BLE and Live Activities require a **development build** on a physical device (they don't work
@@ -51,9 +51,9 @@ in Expo Go or the simulator). See "Builds" below.
 ## Scripts
 
 ```bash
-npm test           # Jest — engine golden + unit tests
-npm run typecheck  # tsc --noEmit
-npm run lint       # eslint (incl. max-lines file-size guard)
+bun test           # Jest — engine golden + unit tests
+bun run typecheck  # tsc --noEmit
+bun run lint       # eslint (incl. max-lines file-size guard)
 ```
 
 ## How the engine stays correct
@@ -69,7 +69,7 @@ tested via an in-memory `better-sqlite3` adapter that runs the same SQL the devi
 `eas.json` defines `development`, `preview`, and `production` profiles.
 
 ```bash
-npm i -g eas-cli && eas login
+bun i -g eas-cli && eas login
 eas build --profile development --platform ios      # dev client (device)
 eas build --profile development --platform android
 ```
