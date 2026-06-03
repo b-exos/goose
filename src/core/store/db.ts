@@ -35,6 +35,29 @@ export async function migrate(db: GooseDatabase): Promise<void> {
   await db.execAsync(SCHEMA_SQL);
   await db.execAsync(OVERNIGHT_MIRROR_SQL);
   await db.execAsync(ROLLUP_SCHEMA_SQL);
+  await addDecodedFramePacketK(db);
+}
+
+/**
+ * Add + backfill `decoded_frames.packet_k` on databases created before the column existed, so the
+ * daily rollup can SQL-filter the high-volume raw-optical frames instead of parsing every row.
+ * No-op on fresh DBs (the column is in the CREATE). Best-effort: backfill uses SQLite JSON1.
+ */
+async function addDecodedFramePacketK(db: GooseDatabase): Promise<void> {
+  const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(decoded_frames)');
+  if (!columns.some((c) => c.name === 'packet_k')) {
+    await db.execAsync('ALTER TABLE decoded_frames ADD COLUMN packet_k INTEGER');
+    try {
+      await db.runAsync(
+        "UPDATE decoded_frames SET packet_k = json_extract(parsed_payload_json, '$.packetK') " +
+          "WHERE packet_k IS NULL AND parsed_payload_json LIKE '%\"packetK\"%'",
+      );
+    } catch {
+      // JSON1 unavailable — new rows still populate packet_k on insert; old rows stay null.
+    }
+  }
+  // Create the index only after the column is guaranteed to exist (in CREATE or via the ALTER).
+  await db.execAsync('CREATE INDEX IF NOT EXISTS idx_decoded_frames_extract ON decoded_frames(created_at, packet_k)');
 }
 
 /** Read the SQLite `user_version` pragma (14 once migrated). */

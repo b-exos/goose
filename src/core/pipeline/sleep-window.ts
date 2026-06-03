@@ -3,8 +3,9 @@
  *
  * Bins motion/HR into minutes, finds the longest contiguous low-motion block as the sleep
  * window, derives duration/efficiency/disturbances/HR-dip, and scores it with `gooseSleepV0`.
- * Coarse asleep/awake only — no deep/REM/core stages (that's the full-parity calibrated
- * stager). `sleepNeedMinutes` is a static 8h for MVP until a chronotype model exists.
+ * When motion is largely absent (e.g. an HR-only history sync), it falls back to HR quiescence
+ * to mark awake minutes. Coarse asleep/awake only — no deep/REM/core stages (that's the
+ * full-parity calibrated stager). `sleepNeedMinutes` is a static 8h for MVP.
  */
 import type { HeartRateSample, MotionSample } from '../features/resting-hr';
 import { gooseSleepV0, type SleepScoreOutput } from '../metrics/sleep';
@@ -16,6 +17,10 @@ const SLEEP_NEED_MINUTES = 480;
 const MINUTE_MS = 60_000;
 /** Still runs separated by a moving gap no longer than this are merged into one window. */
 const MERGE_GAP_MINUTES = 20;
+/** Minimum HR rise (bpm) over the resting floor before a minute counts as awake (HR fallback). */
+const HR_AWAKE_MIN_DELTA = 10;
+/** Minimum pre-sleep→in-window HR dip (%) to accept an HR-only (motion-absent) sleep window. */
+const MIN_HR_DIP_PERCENT = 8;
 
 export interface SleepWindow {
   startMs: number;
@@ -41,11 +46,21 @@ export function detectSleepWindow(
 
   // Per-minute "moving" flag: true if any motion sample in the minute exceeds the threshold.
   const moving = new Array<boolean>(minuteCount).fill(false);
+  const motionMinutes = new Set<number>();
   for (const m of motionSamples) {
-    if (m.motionIntensity0To1 > LOW_MOTION_MAX) {
-      const idx = Math.floor((m.timeUnixMs - firstMs) / MINUTE_MS);
-      if (idx >= 0 && idx < minuteCount) moving[idx] = true;
-    }
+    const idx = Math.floor((m.timeUnixMs - firstMs) / MINUTE_MS);
+    if (idx < 0 || idx >= minuteCount) continue;
+    motionMinutes.add(idx);
+    if (m.motionIntensity0To1 > LOW_MOTION_MAX) moving[idx] = true;
+  }
+
+  // A sleeping minute is BOTH low-motion AND low-HR. Always fold HR quiescence into the
+  // "moving" mask (not only when motion is sparse): minutes whose HR sits above the sleep
+  // threshold are marked awake, so daytime rest at normal HR — or a flat sedentary stretch —
+  // isn't mistaken for sleep, even once motion is streaming.
+  void motionMinutes; // (kept for potential coverage diagnostics)
+  if (hrSamples.length > 0) {
+    applyHrAwakeFlags(moving, hrSamples, firstMs, minuteCount);
   }
 
   // Still runs (contiguous non-moving minutes), as [start, end) minute indices.
@@ -93,6 +108,13 @@ export function detectSleepWindow(
   const startMs = firstMs + cluster.start * MINUTE_MS;
   const endMs = firstMs + cluster.end * MINUTE_MS;
   const timeInBedMinutes = cluster.end - cluster.start;
+  const heartRateDipPercent = heartRateDip(hrSamples, startMs, endMs);
+
+  // Real sleep shows a clear HR dip from a higher pre-sleep baseline. Require one (always), so a
+  // flat sedentary stretch at normal HR isn't reported as a perfect night.
+  if (heartRateDipPercent === null || heartRateDipPercent < MIN_HR_DIP_PERCENT) {
+    return null;
+  }
 
   return {
     startMs,
@@ -101,8 +123,44 @@ export function detectSleepWindow(
     sleepDurationMinutes: cluster.sleepMinutes,
     awakeMinutes: timeInBedMinutes - cluster.sleepMinutes,
     disturbanceCount: cluster.disturbances,
-    heartRateDipPercent: heartRateDip(hrSamples, startMs, endMs),
+    heartRateDipPercent,
   };
+}
+
+/**
+ * Mark minutes "moving" by HR elevation (motion-absent fallback). Sleep HR sits near the
+ * resting floor; waking/active minutes ride higher. Threshold = resting floor + half the
+ * gap to the median (min `HR_AWAKE_MIN_DELTA`), so a calm night stays asleep while active
+ * daytime stretches in a multi-day buffer are excluded.
+ */
+function applyHrAwakeFlags(
+  moving: boolean[],
+  hrSamples: HeartRateSample[],
+  firstMs: number,
+  minuteCount: number,
+): void {
+  const sums = new Array<number>(minuteCount).fill(0);
+  const counts = new Array<number>(minuteCount).fill(0);
+  for (const h of hrSamples) {
+    const idx = Math.floor((h.timeUnixMs - firstMs) / MINUTE_MS);
+    if (idx < 0 || idx >= minuteCount) continue;
+    sums[idx] += h.heartRateBpm;
+    counts[idx] += 1;
+  }
+
+  const minuteHr: number[] = [];
+  for (let i = 0; i < minuteCount; i++) if (counts[i] > 0) minuteHr.push(sums[i] / counts[i]);
+  if (minuteHr.length === 0) return;
+
+  const sorted = [...minuteHr].sort((a, b) => a - b);
+  const percentile = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+  const restingFloor = percentile(0.1);
+  const median = percentile(0.5);
+  const threshold = restingFloor + Math.max(HR_AWAKE_MIN_DELTA, 0.5 * (median - restingFloor));
+
+  for (let i = 0; i < minuteCount; i++) {
+    if (counts[i] > 0 && sums[i] / counts[i] > threshold) moving[i] = true;
+  }
 }
 
 /** Percent HR dip from pre-sleep average to in-window minimum, or null without data. */

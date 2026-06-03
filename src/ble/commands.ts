@@ -21,6 +21,29 @@ export const COMMAND_SEND_HISTORICAL_DATA = 22; // send_historical_data
 export const COMMAND_HISTORICAL_DATA_RESULT = 23; // historical_data_result (disposition byte)
 export const COMMAND_GET_BATTERY_LEVEL = 26; // get_battery_level
 export const COMMAND_GET_DATA_RANGE = 34; // get_data_range
+export const COMMAND_ENTER_HIGH_FREQ_SYNC = 96; // enter bulk-history sync mode
+export const COMMAND_EXIT_HIGH_FREQ_SYNC = 97; // exit bulk-history sync mode
+export const COMMAND_START_RAW_DATA = 81; // start realtime raw data stream
+export const COMMAND_STOP_RAW_DATA = 82; // stop realtime raw data stream
+export const COMMAND_START_DEVICE_CONFIG_KEY_EXCHANGE = 115; // begin auth/key exchange
+export const COMMAND_GET_DEVICE_CONFIG_VALUE = 121; // read a device-config value (read-only)
+export const COMMAND_GET_FEATURE_FLAG_VALUE = 128; // read a feature flag (read-only)
+export const COMMAND_TOGGLE_IMU_MODE_HISTORICAL = 105; // motion buffering → sleep
+export const COMMAND_TOGGLE_IMU_MODE = 106; // realtime IMU
+export const COMMAND_ENABLE_OPTICAL_DATA = 107; // realtime optical R20
+export const COMMAND_TOGGLE_OPTICAL_MODE = 108; // optical/R17 → RR intervals (HRV/recovery)
+export const COMMAND_SEND_R10_R11_REALTIME = 63; // realtime raw motion (R10/R11)
+export const COMMAND_TOGGLE_PERSISTENT_R20 = 153; // persistent optical R20 stream
+export const COMMAND_TOGGLE_PERSISTENT_R21 = 154; // persistent motion R21 stream
+
+/**
+ * Sensor-toggle payload used by the WHOOP app for the IMU/optical/persistent commands:
+ * `[revision, enabled]` (revision pinned to 1). Plain `[1]` (single byte) was insufficient —
+ * the band ACKs it but won't stream. Matches the original Goose `revisionBoolean`.
+ */
+function revisionBoolean(enabled: boolean): Uint8Array {
+  return new Uint8Array([1, enabled ? 1 : 0]);
+}
 
 /** little-endian u32 bytes. */
 function u32le(value: number): number[] {
@@ -81,5 +104,82 @@ export class CommandSequencer {
   /** Abort any in-flight historical transmit. */
   abortHistoricalTransmits(): Uint8Array {
     return this.build(COMMAND_ABORT_HISTORICAL);
+  }
+
+  /** Enter the band's bulk-history (high-frequency) sync mode. */
+  enterHighFreqSync(): Uint8Array {
+    return this.build(COMMAND_ENTER_HIGH_FREQ_SYNC);
+  }
+
+  /** Exit the bulk-history sync mode. */
+  exitHighFreqSync(): Uint8Array {
+    return this.build(COMMAND_EXIT_HIGH_FREQ_SYNC);
+  }
+
+  /** Toggle historical IMU (motion) buffering — the source for sleep detection. */
+  toggleImuModeHistorical(enable: boolean): Uint8Array {
+    return this.build(COMMAND_TOGGLE_IMU_MODE_HISTORICAL, new Uint8Array([enable ? 1 : 0]));
+  }
+
+  /** Toggle realtime IMU (motion) streaming. */
+  toggleImuMode(enable: boolean): Uint8Array {
+    return this.build(COMMAND_TOGGLE_IMU_MODE, revisionBoolean(enable));
+  }
+
+  /** Enable realtime optical (R20) data. */
+  enableOpticalData(enable: boolean): Uint8Array {
+    return this.build(COMMAND_ENABLE_OPTICAL_DATA, revisionBoolean(enable));
+  }
+
+  /** Toggle the optical stream mode — the source for R17 RR intervals (HRV/recovery). */
+  toggleOpticalMode(enable: boolean): Uint8Array {
+    return this.build(COMMAND_TOGGLE_OPTICAL_MODE, revisionBoolean(enable));
+  }
+
+  /** Start the realtime raw-data stream. */
+  startRawData(): Uint8Array {
+    return this.build(COMMAND_START_RAW_DATA);
+  }
+
+  /** Stop the realtime raw-data stream. */
+  stopRawData(): Uint8Array {
+    return this.build(COMMAND_STOP_RAW_DATA);
+  }
+
+  /**
+   * The WHOOP-app "start physiology capture" sequence (ported from the original Goose
+   * `startPhysiologyCapture`): HR + R10/R11 + IMU + persistent R21 (motion) + optical enable +
+   * optical mode + persistent R20 (optical). This exact set with `[1,1]` payloads is what makes
+   * the band actually stream motion/optical/pulse families, not just HR. Returned in order; the
+   * client sends them spaced ~250ms apart.
+   */
+  physiologyStartFrames(): Uint8Array[] {
+    return [
+      this.build(COMMAND_TOGGLE_REALTIME_HR, new Uint8Array([1])),
+      this.build(COMMAND_SEND_R10_R11_REALTIME, new Uint8Array([1])),
+      this.build(COMMAND_TOGGLE_IMU_MODE, revisionBoolean(true)),
+      this.build(COMMAND_TOGGLE_PERSISTENT_R21, revisionBoolean(true)),
+      this.build(COMMAND_ENABLE_OPTICAL_DATA, revisionBoolean(true)),
+      this.build(COMMAND_TOGGLE_OPTICAL_MODE, revisionBoolean(true)),
+      this.build(COMMAND_TOGGLE_PERSISTENT_R20, revisionBoolean(true)),
+    ];
+  }
+
+  /** The reverse "stop physiology capture" sequence (disables every stream the start enabled). */
+  physiologyStopFrames(): Uint8Array[] {
+    return [
+      this.build(COMMAND_TOGGLE_PERSISTENT_R20, revisionBoolean(false)),
+      this.build(COMMAND_TOGGLE_OPTICAL_MODE, revisionBoolean(false)),
+      this.build(COMMAND_ENABLE_OPTICAL_DATA, revisionBoolean(false)),
+      this.build(COMMAND_TOGGLE_PERSISTENT_R21, revisionBoolean(false)),
+      this.build(COMMAND_TOGGLE_IMU_MODE, revisionBoolean(false)),
+      this.build(COMMAND_SEND_R10_R11_REALTIME, new Uint8Array([0])),
+      this.build(COMMAND_TOGGLE_REALTIME_HR, new Uint8Array([0])),
+    ];
+  }
+
+  /** Begin the device-config key exchange (the band's auth handshake entry point). */
+  startDeviceConfigKeyExchange(): Uint8Array {
+    return this.build(COMMAND_START_DEVICE_CONFIG_KEY_EXCHANGE);
   }
 }

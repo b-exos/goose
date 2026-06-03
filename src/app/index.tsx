@@ -1,5 +1,6 @@
 /** Home tab — today's overview: device, live HR, daily scores (rings), and workout. */
-import { useEffect } from 'react';
+import { useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -41,12 +42,20 @@ export default function HomeScreen() {
   const today = useHealthStore((s) => s.today);
   const loadMetrics = useHealthStore((s) => s.load);
 
-  useEffect(() => {
-    if (ready && db) void loadMetrics(db, dateKeyOf(new Date()));
-  }, [ready, db, loadMetrics]);
+  // Re-load on every focus so the day's metrics stay current (e.g. across the midnight rollover,
+  // and after a sync/monitor recompute) rather than showing a stale snapshot from mount time.
+  useFocusEffect(
+    useCallback(() => {
+      if (ready && db) void loadMetrics(db, dateKeyOf(new Date()));
+    }, [ready, db, loadMetrics]),
+  );
 
   const sleepScore = today?.sleepScore0To100 ?? null;
   const strainScore = today?.strainScore0To21 ?? null;
+  const recoveryScore = today?.recoveryScore0To100 ?? null;
+  const recoveryStatus = today?.recoveryStatus ?? 'unavailable';
+  const hrvRmssd = today?.hrvRmssdMs ?? null;
+  const recoveryDisplay = recoveryStatus === 'calibrating' ? 'cal' : recoveryStatus === 'available' ? undefined : 'n/a';
 
   return (
     <ScreenScaffold title="Today">
@@ -61,8 +70,14 @@ export default function HomeScreen() {
       </SectionCard>
 
       <View style={styles.ringRow}>
-        {/* Recovery is gated until HRV (RR-interval) decoding lands. */}
-        <ScoreRing value={null} max={100} label="Recovery" color={recoveryColor(null)} display="n/a" />
+        {/* Recovery shows once RR intervals (optical R17) were decoded for the day. */}
+        <ScoreRing
+          value={recoveryScore}
+          max={100}
+          label="Recovery"
+          color={recoveryColor(recoveryScore)}
+          display={recoveryDisplay}
+        />
         <ScoreRing value={sleepScore} max={100} label="Sleep" color={sleepColor(sleepScore)} />
         <ScoreRing value={strainScore} max={21} label="Strain" color={strainColor(strainScore)} />
       </View>
@@ -72,8 +87,16 @@ export default function HomeScreen() {
           value={today?.restingHrBpm != null ? `${Math.round(today.restingHrBpm)}` : '—'}
           caption="Resting heart rate (bpm)"
         />
+        <MetricReadout
+          value={hrvRmssd != null ? `${Math.round(hrvRmssd)}` : '—'}
+          caption="HRV (ms RMSSD)"
+        />
         <ThemedText type="small" themeColor="textSecondary">
-          HRV-based recovery is unavailable until RR-interval decoding lands.
+          {recoveryStatus === 'available'
+            ? 'Recovery is HRV/RHR-driven vs your baseline; respiratory rate & skin temp use neutral placeholders until decoded.'
+            : recoveryStatus === 'calibrating'
+              ? 'Recovery is calibrating — HRV is recording, but it needs several nights of baseline (worn overnight) before the score is meaningful.'
+              : 'Recovery needs optical RR — wear the band and Start monitor to record HRV.'}
         </ThemedText>
       </SectionCard>
 

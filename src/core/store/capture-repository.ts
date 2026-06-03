@@ -131,13 +131,15 @@ export async function insertDecodedFrame(
   evidenceId: string,
   frame: ParsedFrame,
 ): Promise<boolean> {
+  const payload = frame.parsedPayload as { kind?: string; packetK?: number | null } | null;
+  const packetK = payload && 'packetK' in payload ? (payload.packetK ?? null) : null;
   const result = await db.runAsync(
     `INSERT OR IGNORE INTO decoded_frames
        (frame_id, evidence_id, device_type, raw_len, header_len, declared_len,
         payload_hex, payload_crc_hex, header_crc_valid, payload_crc_valid,
-        packet_type, packet_type_name, sequence, command_or_event,
+        packet_type, packet_type_name, sequence, command_or_event, packet_k,
         parsed_payload_json, parser_version, warnings_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       frameId,
       evidenceId,
@@ -153,6 +155,7 @@ export async function insertDecodedFrame(
       frame.packetTypeName,
       frame.sequence,
       frame.commandOrEvent,
+      packetK,
       JSON.stringify(frame.parsedPayload),
       PARSER_VERSION,
       JSON.stringify(frame.warnings),
@@ -193,14 +196,40 @@ interface ExtractionFrameRow {
   created_at: string;
 }
 
+/** Unix seconds for 2020-01-01; device timestamps below this are treated as not-yet-set. */
+const PLAUSIBLE_DEVICE_EPOCH_S = 1_577_836_800;
+
+/** Sample time for a frame: the band's device timestamp when plausible, else insert time. */
+function frameTimeMs(parsedPayloadJson: string, createdAt: string): number {
+  try {
+    const payload = JSON.parse(parsedPayloadJson || 'null') as { timestampSeconds?: number } | null;
+    const seconds = payload?.timestampSeconds;
+    if (typeof seconds === 'number' && seconds > PLAUSIBLE_DEVICE_EPOCH_S) {
+      return seconds * 1000;
+    }
+  } catch {
+    // fall through to insert time
+  }
+  return Date.parse(createdAt);
+}
+
 /**
  * Decoded frames in a `created_at` window (ISO bounds; ISO sorts chronologically), shaped for
- * the extraction pipeline. `capturedAtMs` is derived from `created_at`.
+ * the extraction pipeline. `capturedAtMs` prefers the band's device timestamp (so a night
+ * synced in one batch keeps its real timeline) and falls back to insert time.
  */
+export interface ExtractionFilter {
+  /** Exclude these `packet_k` values (e.g. the high-volume raw optical k20) from the scan. */
+  excludePacketK?: number[];
+  /** Restrict to these `packet_k` values (e.g. only k20 for PPG). */
+  includePacketK?: number[];
+}
+
 export async function decodedFramesForExtraction(
   db: GooseDatabase,
   startIso: string,
   endIso: string,
+  filter: ExtractionFilter = {},
 ): Promise<
   {
     frameId: string;
@@ -211,10 +240,21 @@ export async function decodedFramesForExtraction(
     capturedAtMs: number;
   }[]
 > {
+  const clauses = ['created_at >= ?', 'created_at < ?'];
+  const params: (string | number)[] = [startIso, endIso];
+  if (filter.includePacketK?.length) {
+    clauses.push(`packet_k IN (${filter.includePacketK.map(() => '?').join(',')})`);
+    params.push(...filter.includePacketK);
+  }
+  if (filter.excludePacketK?.length) {
+    // NULL packet_k (commands/events) is kept — only the listed data families are dropped.
+    clauses.push(`(packet_k IS NULL OR packet_k NOT IN (${filter.excludePacketK.map(() => '?').join(',')}))`);
+    params.push(...filter.excludePacketK);
+  }
   const rows = await db.getAllAsync<ExtractionFrameRow>(
     `SELECT frame_id, packet_type, packet_type_name, payload_hex, parsed_payload_json, created_at
-       FROM decoded_frames WHERE created_at >= ? AND created_at < ? ORDER BY created_at ASC`,
-    [startIso, endIso],
+       FROM decoded_frames WHERE ${clauses.join(' AND ')} ORDER BY created_at ASC`,
+    params,
   );
   return rows.map((r) => ({
     frameId: r.frame_id,
@@ -222,6 +262,6 @@ export async function decodedFramesForExtraction(
     packetTypeName: r.packet_type_name,
     payloadHex: r.payload_hex,
     parsedPayloadJson: r.parsed_payload_json,
-    capturedAtMs: Date.parse(r.created_at),
+    capturedAtMs: frameTimeMs(r.parsed_payload_json, r.created_at),
   }));
 }

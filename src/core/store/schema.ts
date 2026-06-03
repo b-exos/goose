@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS decoded_frames (
     packet_type_name TEXT,
     sequence INTEGER,
     command_or_event INTEGER,
+    packet_k INTEGER,
     parsed_payload_json TEXT NOT NULL DEFAULT 'null',
     parser_version TEXT NOT NULL,
     warnings_json TEXT NOT NULL,

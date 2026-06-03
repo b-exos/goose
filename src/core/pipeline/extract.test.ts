@@ -4,6 +4,7 @@ import { loadHex } from '../testing/fixtures';
 import {
   extractHeartRateSamples,
   extractMotionSamples,
+  extractRrIntervals,
   type DecodedFrameForExtraction,
 } from './extract';
 
@@ -38,5 +39,14 @@ describe('frame extraction', () => {
     expect(motion).toHaveLength(1);
     expect(motion[0].frameId).toBe('goose_v5_k10_motion_summary_short');
     expect(motion[0].motionIntensity0To1).toBeCloseTo(1.2 / 32767, 12);
+  });
+
+  it('extracts plausible RR intervals from R17 optical frames', () => {
+    // r17 fixture samples are [1000, -1000, 200]; only 1000 ms is in the 300–2000 RR range.
+    const rr = extractRrIntervals([row('goose_v5_r17_optical_summary', 5000), ...rows]);
+    expect(rr).toHaveLength(1);
+    expect(rr[0].rrIntervalsMs).toEqual([1000]);
+    expect(rr[0].metricInputId).toBe('goose_v5_r17_optical_summary.rr_intervals');
+    expect(rr[0].capturedAt).toBe(new Date(5000).toISOString());
   });
 });

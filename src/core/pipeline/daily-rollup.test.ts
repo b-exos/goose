@@ -39,6 +39,47 @@ describe('daily rollup compute', () => {
     expect(metrics.strain).toBeNull();
     expect(metrics.energy).toBeNull();
   });
+
+  it('keeps strain near zero for a sedentary day (no effort above rest)', () => {
+    // 90 minutes of sitting at a flat ~60 bpm — should NOT accumulate workout-level strain.
+    const samples = Array.from({ length: 90 }, (_, m) => hr(m, 60));
+    const metrics = computeDailyMetrics(samples, [], 'a', 'b');
+    expect(metrics.strain?.output?.score0To21 ?? 0).toBeLessThan(2);
+  });
+
+  it('reports recovery unavailable without RR intervals', () => {
+    const samples = [hr(0, 60), hr(1, 62), hr(2, 64)];
+    const metrics = computeDailyMetrics(samples, [], 'a', 'b');
+    expect(metrics.hrv).toBeNull();
+    expect(metrics.recovery).toBeNull();
+    expect(metrics.recoveryUnavailable).toBe(true);
+  });
+
+  it('computes HRV + recovery when RR intervals AND a baseline are supplied', () => {
+    const samples = [hr(0, 60), hr(1, 62), hr(2, 58), hr(3, 60)];
+    // 40 RR intervals (~1000ms ⇒ ~60bpm) — above the recovery minimum.
+    const rrIntervalsMs = Array.from({ length: 40 }, (_, i) => 980 + (i % 5) * 10);
+    const metrics = computeDailyMetrics(samples, [], '2026-05-28T00:00:00Z', '2026-05-29T00:00:00Z', {}, {
+      rrSamples: [{ metricInputId: 'r17.rr', capturedAt: '2026-05-28T03:00:00Z', rrIntervalsMs }],
+      hrvBaselineRmssdMs: 45,
+      restingHrBaselineBpm: 58,
+    });
+    expect(metrics.hrv?.output?.rmssdMs).toBeGreaterThan(0);
+    expect(metrics.recovery?.output?.score0To100).toBeGreaterThan(0);
+    expect(metrics.recoveryStatus).toBe('available');
+    expect(metrics.recoveryUnavailable).toBe(false);
+  });
+
+  it('reports recovery "calibrating" when RR exists but there is no baseline yet', () => {
+    const samples = [hr(0, 60), hr(1, 62)];
+    const rrIntervalsMs = Array.from({ length: 40 }, (_, i) => 980 + (i % 5) * 10);
+    const metrics = computeDailyMetrics(samples, [], 'a', 'b', {}, {
+      rrSamples: [{ metricInputId: 'r17.rr', capturedAt: '2026-05-28T03:00:00Z', rrIntervalsMs }],
+    });
+    expect(metrics.hrv?.output?.rmssdMs).toBeGreaterThan(0);
+    expect(metrics.recovery).toBeNull();
+    expect(metrics.recoveryStatus).toBe('calibrating');
+  });
 });
 
 describe('runDailyRollup (persistence)', () => {

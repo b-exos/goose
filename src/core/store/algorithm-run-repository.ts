@@ -81,7 +81,8 @@ function numericFieldsOf(output: Record<string, unknown> | null): [string, numbe
 /**
  * Persist an algorithm run plus its metric_values and metric_components.
  * Auto-upserts a minimal definition (FK target) from the result's family.
- * Returns the `runId`. Uses INSERT OR IGNORE so re-persisting a run is a no-op.
+ * Returns the `runId`. Uses INSERT OR REPLACE so re-persisting a run (a recompute over more
+ * data) refreshes the stored run + its metric rows.
  */
 export async function persistAlgorithmRun<T>(
   db: GooseDatabase,
@@ -94,8 +95,10 @@ export async function persistAlgorithmRun<T>(
     metricFamily: result.family,
   });
 
+  // OR REPLACE so a recompute (e.g. live monitor accumulating more data) refreshes the run.
+  // Replacing the run cascades to its metric_values/components, which we re-insert below.
   await db.runAsync(
-    `INSERT OR IGNORE INTO algorithm_runs
+    `INSERT OR REPLACE INTO algorithm_runs
        (run_id, algorithm_id, version, start_time, end_time, output_json, quality_flags_json, provenance_json)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -114,7 +117,7 @@ export async function persistAlgorithmRun<T>(
 
   for (const [name, value] of numericFieldsOf(output)) {
     await db.runAsync(
-      `INSERT OR IGNORE INTO metric_values
+      `INSERT OR REPLACE INTO metric_values
          (metric_value_id, run_id, metric_family, name, value, unit, start_time, end_time)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [`${runId}.${name}`, runId, result.family, name, value, 'raw', result.startTime, result.endTime],
@@ -130,7 +133,7 @@ export async function persistAlgorithmRun<T>(
       contribution: c.contribution ?? null,
     });
     await db.runAsync(
-      `INSERT OR IGNORE INTO metric_components
+      `INSERT OR REPLACE INTO metric_components
          (metric_component_id, run_id, component_name, value, unit, contribution_json)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [`${runId}.component.${index}.${c.name}`, runId, c.name, c.value, c.unit, contributionJson],

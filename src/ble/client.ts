@@ -189,6 +189,63 @@ export class GooseBleClient {
     return this.sendCommand(this.sequencer.getBatteryLevel());
   }
 
+  /** Enter the band's bulk-history (high-frequency) sync mode. */
+  sendEnterHighFreqSync(): Promise<void> {
+    return this.sendCommand(this.sequencer.enterHighFreqSync());
+  }
+
+  /** Exit the bulk-history sync mode. */
+  sendExitHighFreqSync(): Promise<void> {
+    return this.sendCommand(this.sequencer.exitHighFreqSync());
+  }
+
+  /** Enable/disable historical IMU (motion) buffering — feeds sleep detection. */
+  sendToggleImuModeHistorical(enable: boolean): Promise<void> {
+    return this.sendCommand(this.sequencer.toggleImuModeHistorical(enable));
+  }
+
+  /** Enable/disable realtime IMU (motion) streaming — feeds live motion/sleep. */
+  sendToggleImuMode(enable: boolean): Promise<void> {
+    return this.sendCommand(this.sequencer.toggleImuMode(enable));
+  }
+
+  /**
+   * Send the WHOOP-app physiology-capture sequence (HR + R10/R11 + IMU + persistent R21 +
+   * optical + persistent R20), spaced ~250ms apart like the original app — the sequence that
+   * actually unlocks motion/optical/pulse streaming.
+   */
+  async startPhysiologyCapture(): Promise<void> {
+    await this.sendSequenceSpaced(this.sequencer.physiologyStartFrames());
+  }
+
+  /** Disable the physiology-capture streams. */
+  async stopPhysiologyCapture(): Promise<void> {
+    await this.sendSequenceSpaced(this.sequencer.physiologyStopFrames());
+  }
+
+  private async sendSequenceSpaced(frames: Uint8Array[], gapMs = 250): Promise<void> {
+    for (let i = 0; i < frames.length; i++) {
+      await this.sendCommand(frames[i]);
+      if (i < frames.length - 1) await new Promise((resolve) => setTimeout(resolve, gapMs));
+    }
+  }
+
+  /** Start/stop the realtime raw-data stream. */
+  sendRawData(start: boolean): Promise<void> {
+    return this.sendCommand(start ? this.sequencer.startRawData() : this.sequencer.stopRawData());
+  }
+
+  /** Begin the device-config key exchange (auth handshake entry point). */
+  sendStartKeyExchange(): Promise<void> {
+    return this.sendCommand(this.sequencer.startDeviceConfigKeyExchange());
+  }
+
+  /** Enable/disable optical (R17) streaming — the source for RR intervals (HRV/recovery). */
+  async sendEnableOptical(enable: boolean): Promise<void> {
+    await this.sendCommand(this.sequencer.enableOpticalData(enable));
+    await this.sendCommand(this.sequencer.toggleOpticalMode(enable));
+  }
+
   async disconnect(): Promise<void> {
     this.cleanupSubscriptions();
     if (this.device) {

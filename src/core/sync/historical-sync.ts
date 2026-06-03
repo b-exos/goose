@@ -81,9 +81,8 @@ export class HistoricalSync {
         return [{ type: 'send_historical_data' }];
 
       case 'history_start':
-        if (this.state === 'awaiting_start' || this.state === 'range_requested') {
-          this.state = 'transferring';
-        }
+        // Only the data stream starts the transfer — never the get_data_range reply.
+        if (this.state === 'awaiting_start') this.state = 'transferring';
         return [];
 
       case 'reading':

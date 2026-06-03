@@ -1,5 +1,6 @@
 /** Health tab — per-family metric surfaces from the day's computed metrics. */
-import { useEffect } from 'react';
+import { useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { MetricReadout, SectionCard } from '@/features/components/section-card';
@@ -12,9 +13,12 @@ export default function HealthScreen() {
   const today = useHealthStore((s) => s.today);
   const load = useHealthStore((s) => s.load);
 
-  useEffect(() => {
-    if (ready && db) void load(db, dateKeyOf(new Date()));
-  }, [ready, db, load]);
+  // Re-load on focus so the day's metrics stay current across date rollover + recomputes.
+  useFocusEffect(
+    useCallback(() => {
+      if (ready && db) void load(db, dateKeyOf(new Date()));
+    }, [ready, db, load]),
+  );
 
   const fmt = (v: number | null | undefined, digits = 0) =>
     v == null ? '—' : v.toFixed(digits);
@@ -41,11 +45,36 @@ export default function HealthScreen() {
         <MetricReadout value={fmt(today?.totalKcal)} caption="Total energy (estimate)" />
       </SectionCard>
 
-      <SectionCard title="Recovery & HRV" subtitle="Unavailable">
-        <ThemedText type="small" themeColor="textSecondary">
-          Recovery and HRV need RR-interval (optical) decoding, which isn't implemented yet —
-          shown as unavailable rather than estimated.
-        </ThemedText>
+      <SectionCard
+        title="Recovery & HRV"
+        subtitle={
+          today?.recoveryStatus === 'available'
+            ? 'Score 0–100'
+            : today?.recoveryStatus === 'calibrating'
+              ? 'Calibrating'
+              : 'Unavailable'
+        }>
+        {today?.recoveryStatus === 'available' ? (
+          <>
+            <MetricReadout value={fmt(today?.recoveryScore0To100)} caption="Recovery score" />
+            <MetricReadout value={fmt(today?.hrvRmssdMs)} caption="HRV (ms RMSSD)" />
+            <ThemedText type="small" themeColor="textSecondary">
+              HRV/RHR-driven vs your baseline; respiratory & skin temp use neutral placeholders.
+            </ThemedText>
+          </>
+        ) : today?.recoveryStatus === 'calibrating' ? (
+          <>
+            <MetricReadout value={fmt(today?.hrvRmssdMs)} caption="HRV (ms RMSSD) — recording" />
+            <ThemedText type="small" themeColor="textSecondary">
+              Building your baseline. Recovery needs several nights worn overnight before the score
+              is meaningful — a single day has nothing to compare against.
+            </ThemedText>
+          </>
+        ) : (
+          <ThemedText type="small" themeColor="textSecondary">
+            Recovery & HRV need optical RR intervals. Wear the band and Start monitor to record HRV.
+          </ThemedText>
+        )}
       </SectionCard>
     </ScreenScaffold>
   );
